@@ -1,7 +1,7 @@
 import {PermissionsAndroid, StyleSheet, Text, View} from 'react-native';
 import React, {useEffect} from 'react';
 
-const LocationPermission = () => {
+const LocationPermission = ({navigation}) => {
   const requestLocationPermission = async () => {
     try {
       const granted = await PermissionsAndroid.request(
@@ -44,6 +44,7 @@ const LocationPermission = () => {
       if (granted === PermissionsAndroid.RESULTS.GRANTED) {
         console.log('You can use the Background Location');
         setTimeout(() => requestNotificationPermission(), 500);
+        navigation.navigate('Tracker');
       } else {
         console.log('Location permission denied');
       }
@@ -68,8 +69,10 @@ const LocationPermission = () => {
       );
       if (granted === PermissionsAndroid.RESULTS.GRANTED) {
         console.log('You can use the Notifications');
+        navigation.navigate('Tracker');
       } else {
-        console.log('Location permission denied for notificatiopns');
+        console.log('permission denied for notificatiopns');
+        navigation.navigate('Tracker');
       }
     } catch (err) {
       console.warn('Notification permission denied -->', err);

@@ -1,5 +1,5 @@
 import {
-  Alert,
+  Button,
   ScrollView,
   StyleSheet,
   Text,
@@ -7,81 +7,79 @@ import {
   View,
 } from 'react-native';
 import React, {useEffect, useState} from 'react';
-import Geolocation from 'react-native-geolocation-service';
+import Geolocation, {clearWatch} from 'react-native-geolocation-service';
 import {useNavigation} from '@react-navigation/native';
 import BackgroundService from 'react-native-background-actions';
+import {calculateDistance} from '../Helpers/Functions';
+import {options} from '../Helpers/BackgroungFunctions';
+import {useDispatch, useSelector} from 'react-redux';
+import {
+  clearLocationData,
+  endLocation,
+  startLocations,
+  printSlice,
+  backgroundServiceStartStop,
+} from '../Redux/Slice';
 
 const sleep = time => new Promise(resolve => setTimeout(() => resolve(), time));
+let watchSleet = null;
+const LocationTracker = ({route}) => {
+  const startData = useSelector(state => state.DistanceSlice.startData);
 
-const LocationTracker = () => {
+  const endData = useSelector(state => state.DistanceSlice.endData);
+  console.log('End Data 30 ---+>', endData);
+
+  const dispatch = useDispatch();
+
+  console.log('Start data from redux on Home Page --> ', endData);
+
+  const isBackgroundRunning = useSelector(
+    state => state.DistanceSlice.isBackgroundServiceRunnig,
+  );
+
+  const [distance, setDistance] = useState(0);
+  const [points, setPoints] = useState(0);
+  const [startLatLon, setStartLatLon] = useState({
+    latitude: 0,
+    longitude: 0,
+  });
+
+  // Destructuring LatLon data
+  const {endlatitude, endLongitude} = endData;
+
+  const navigation = useNavigation();
+
+  // Background tasks
   const veryIntensiveTask = async taskDataArguments => {
     // Example of an infinite loop task
     const {delay} = taskDataArguments;
-    await new Promise(async resolve => {
-      for (let i = 0; BackgroundService.isRunning(); i++) {
-        console.log(`Timer ${i} Distance: ${distance} Points: ${points}`);
+    for (let i = 0; BackgroundService.isRunning; i++) {
+      console.log('Background --> ', i);
 
-        watchLocation();
-        calculatePoints(newLatitude, newLongitude);
-        await BackgroundService.updateNotification({
-          taskDesc: `Updated Points:- ${points} Distance:- ${distance}`,
-        });
-        await sleep(delay);
-      }
-    });
+      await sleep(delay);
+    }
   };
-  const options = {
-    taskName: 'Location Tracker',
-    taskTitle: 'Background location',
-    taskDesc: 'Track the Locatio in Background',
-    taskIcon: {
-      name: 'ic_launcher',
-      type: 'mipmap',
-    },
-    color: '#ff00ff',
-    linkingURI: 'yourSchemeHere://chat/jane', // See Deep Linking for more info
-    parameters: {
-      delay: 5000,
-    },
-  };
-
   const startBackgrounService = async () => {
     await BackgroundService.start(veryIntensiveTask, options);
     await BackgroundService.updateNotification({
-      taskDesc: 'Location tracking',
+      taskDesc: distance.toFixed(3),
     });
   };
 
   const stopBackgrounService = async () => {
     await BackgroundService.stop();
   };
-
-  const [points, setPoints] = useState(0);
-  const [backgroundStarted, setBackgroundStarted] = useState(false);
-
-  const [startPoint, setStartPoint] = useState({
-    startLatitude,
-    startLongitude,
-  });
-
-  const [newPoint, setNewPoint] = useState({
-    newLongitude,
-    newLatitude,
-  });
-
-  const [timeAndPoints, setTimeAndPoints] = useState([]);
-
-  const navigation = useNavigation();
+  // Background Code ends here
 
   // Getting Current Location.
   const getCurrentLocation = () => {
     Geolocation.getCurrentPosition(
       position => {
-        Alert.alert('Get current location function called successfully.');
-        setStartPoint({
-          startLongitude: position.coords.longitude,
-          startLatitude: position.coords.latitude,
-        });
+        const {latitude, longitude} = position.coords;
+        console.log('Get current location function called successfully.');
+        dispatch(
+          startLocations({startLatitude: latitude, startLongitude: longitude}),
+        );
       },
       error => {
         // See error code charts below.
@@ -92,18 +90,8 @@ const LocationTracker = () => {
   };
 
   // Watch Location Functions
-  const success = posi => {
-    Alert.alert('Watcher function called successfully.');
-    setNewPoint({
-      newLatitude: posi.coords.latitude,
-      newLongitude: posi.coords.longitude,
-    });
-  };
 
-  const error = error => {
-    console.log('Error while watching the location --> ', error);
-  };
-
+  // Options Watch Location function
   const option = {
     enableHighAccuracy: true,
     fastestInterval: 5000,
@@ -112,85 +100,57 @@ const LocationTracker = () => {
   };
 
   const watchLocation = () => {
-    Geolocation.watchPosition(success, error, option);
+    watchSleet = Geolocation.watchPosition(
+      position => {
+        const {latitude, longitude} = position.coords;
+        dispatch(endLocation({latitude, longitude}));
+      },
+      error => {
+        console.log('Error while watching the location --> ', error);
+      },
+      option,
+    );
   };
 
   // Calling the function in UseEffects to render at the loding
 
   useEffect(() => {
     getCurrentLocation();
-    watchLocation();
+    return () => clearTimeout(sleep);
   }, []);
 
-  const {startLatitude, startLongitude} = startPoint;
+  useEffect(() => {
+    watchLocation();
+    return () => Geolocation.clearWatch(watchSleet);
+  }, [endData]);
 
-  const {newLatitude, newLongitude} = newPoint;
-
-  //   calculating the distance based on the longitude and latitude
-  const calculateDistance = (lat1, lon1, lat2, lon2) => {
-    const earthRadius = 6371; // Earth's radius in kilometers
-    const dLat = deg2rad(lat2 - lat1);
-    const dLon = deg2rad(lon2 - lon1);
-
-    const a =
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos(deg2rad(lat1)) *
-        Math.cos(deg2rad(lat2)) *
-        Math.sin(dLon / 2) *
-        Math.sin(dLon / 2);
-
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    const distance = earthRadius * c;
-
-    return distance; // Distance in kilometers
-  };
-
-  const deg2rad = degrees => {
-    return degrees * (Math.PI / 180);
-  };
-
-  let distance = calculateDistance(
-    startLatitude,
-    startLongitude,
-    newLatitude,
-    newLongitude,
-  );
-
-  // Dispalay Distance is here
-  const distanceToDisplay = (points / 100).toFixed(3);
-
-  // calculate points function is here
-  const calculatePoints = (newLat, newLon) => {
-    if (distance >= 0.01) {
-      setPoints(points + 1);
-      setStartPoint({
-        startLatitude: newLat,
-        startLongitude: newLon,
-      });
-      setTimeAndPoints([
-        ...timeAndPoints,
-        {
-          time: Date.now(),
-          points: points,
-          dis: distanceToDisplay,
-        },
-      ]);
+  // Calculate distance function is calling.
+  useEffect(() => {
+    if (
+      startLatLon.latitude &&
+      startLatLon.longitude &&
+      endlatitude &&
+      endLongitude
+    ) {
+      setDistance(
+        calculateDistance(
+          startLatLon.latitude,
+          startLatLon.longitude,
+          endlatitude,
+          endLongitude,
+        ),
+      );
     }
-  };
+  }, [endData.endlatitude, endData.endLongitude, startData]);
 
   useEffect(() => {
-    calculatePoints(newLatitude, newLongitude);
-    console.log(
-      'Calculate Points functions is triggered --> ',
-      distance.toFixed(3),
-      'Points --> ',
-      points,
-    );
-  }, [distance >= 0.01]);
-
-  const resetToDefault = () => {
-    getCurrentLocation();
-  };
+    if (startData.length > 0) {
+      setStartLatLon({
+        latitude: startData[1]?.startLatitude,
+        longitude: startData[1]?.startLongitude,
+      });
+    }
+  }, [startData]);
 
   return (
     <ScrollView style={{flex: 1}}>
@@ -201,11 +161,11 @@ const LocationTracker = () => {
         </Text>
         <Text
           style={{fontSize: 19, fontWeight: '700', color: 'black', margin: 15}}>
-          Latitude:- {startLatitude}
+          Latitude:- {startLatLon.latitude}
         </Text>
         <Text
           style={{fontSize: 19, fontWeight: '700', color: 'black', margin: 15}}>
-          Longitude:- {startLongitude}
+          Longitude:- {startLatLon.longitude}
         </Text>
         <View
           style={{
@@ -226,15 +186,18 @@ const LocationTracker = () => {
         </Text>
         <Text
           style={{fontSize: 19, fontWeight: '700', color: 'black', margin: 15}}>
-          Updated Latitude:- {newLatitude}
+          Updated Latitude:- {endlatitude}
         </Text>
         <Text
           style={{fontSize: 19, fontWeight: '700', color: 'black', margin: 15}}>
-          Updated Longitude:- {newLongitude}
+          Updated Longitude:- {endLongitude}
         </Text>
 
         <TouchableOpacity
-          onPress={() => resetToDefault()}
+          onPress={() => {
+            dispatch(clearLocationData());
+            getCurrentLocation();
+          }}
           style={{
             padding: 15,
             width: '100%',
@@ -245,7 +208,8 @@ const LocationTracker = () => {
           <Text style={styles.btnText}>Refresh location</Text>
         </TouchableOpacity>
         <Text style={{fontSize: 17, fontWeight: '700', color: 'green'}}>
-          Distance we covered:- {distanceToDisplay}
+          Distance we covered:-
+          {distance.toFixed(3)}
         </Text>
 
         <Text
@@ -255,7 +219,7 @@ const LocationTracker = () => {
             color: 'green',
             marginTop: 20,
           }}>
-          Total Points:- {points}
+          {/* Total Points:-N/A */}
         </Text>
         <Text
           style={{
@@ -264,13 +228,13 @@ const LocationTracker = () => {
             color: 'green',
             marginTop: 20,
           }}>
-          Distance variable:- {Number(distance).toFixed(3)}
+          Distance variable:- {isNaN(distance) ? 0 : distance.toFixed(3)}
         </Text>
       </View>
       <TouchableOpacity
         onPress={() => {
           navigation.navigate('Details', {
-            data: timeAndPoints.map(item => item),
+            distance: distance,
           });
         }}
         style={{
@@ -283,15 +247,15 @@ const LocationTracker = () => {
         }}>
         <Text style={styles.btnText}>View Details</Text>
       </TouchableOpacity>
-
+      {/* Background Services code and buttons */}
       <TouchableOpacity
         onPress={() => {
-          if (!backgroundStarted) {
+          if (!isBackgroundRunning) {
             startBackgrounService();
-            setBackgroundStarted(true);
+            dispatch(backgroundServiceStartStop(!isBackgroundRunning));
           } else {
-            setBackgroundStarted(false);
             stopBackgrounService();
+            dispatch(backgroundServiceStartStop(!isBackgroundRunning));
           }
         }}
         style={{
@@ -299,14 +263,27 @@ const LocationTracker = () => {
           width: '100%',
           justifyContent: 'center',
           alignItems: 'center',
-          backgroundColor: backgroundStarted ? 'red' : 'gold',
+          backgroundColor: isBackgroundRunning ? 'red' : 'gold',
           marginTop: 15,
         }}>
         <Text style={styles.btnText}>
-          {backgroundStarted
+          {isBackgroundRunning
             ? 'Stop Background Service'
             : 'Start App Background'}
         </Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        onPress={() => dispatch(printSlice())}
+        style={{
+          padding: 15,
+          width: '100%',
+          justifyContent: 'center',
+          alignItems: 'center',
+          backgroundColor: 'steelblue',
+          marginTop: 15,
+        }}>
+        <Text style={styles.btnText}>Print Current States </Text>
       </TouchableOpacity>
     </ScrollView>
   );
